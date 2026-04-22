@@ -314,7 +314,7 @@ export default function GuardianDashboard() {
           "Content-Type": "application/json",
           "anthropic-beta": "pdfs-2024-09-25",
           "x-api-key":
-            "sk-ant-api03-XWWAaEL6M1JpTbMXwKXtVLsyqQa3xOXI8s1POiCB5aOUhDhQpbCb51tU_BqSmKvJ9pkrq1XobLVEYJ_furNzQw-i_JWAwAA",
+            "process.env.REACT_APP_ANTHROPIC_API_KEY-api03-XWWAaEL6M1JpTbMXwKXtVLsyqQa3xOXI8s1POiCB5aOUhDhQpbCb51tU_BqSmKvJ9pkrq1XobLVEYJ_furNzQw-i_JWAwAA",
         },
 
         body: JSON.stringify({
