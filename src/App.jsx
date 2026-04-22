@@ -308,7 +308,7 @@ export default function GuardianDashboard() {
             source: { type: "base64", media_type: file.type, data: base64 },
           };
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("https:///api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
