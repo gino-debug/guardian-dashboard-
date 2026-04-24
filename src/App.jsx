@@ -154,13 +154,10 @@ export default function GuardianDashboard() {
         ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
         : { type: "image", source: { type: "base64", media_type: file.type, data: base64 } };
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": process.env.REACT_APP_ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "pdfs-2024-09-25",
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
