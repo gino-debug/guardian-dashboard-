@@ -24,7 +24,7 @@ L2.1 COA: Heavy metals verified per serving; claims substantiation meets FTC sta
 L2.2 STATE: Prop 65 limits for high-risk botanicals; Prop 65 warning on label if threshold exceeded; formula against state-banned ingredient lists.
 L2.3 AMAZON: TIC Certificate on file; product title matches label; full SFP image in listing; no raw material equivalents or ratios in listing; expiration date visible; lot number visible.
 
-GUARDIAN BEHAVIOR: Read every ingredient name character by character. When spelling error found in one location scan every other instance. Before flagging symbol usage trace every symbol to its footnote. Consolidate duplicate findings. Every finding needs what is wrong plus why it matters plus exact recommendation. Every Confirmed finding needs exact fix plus regulatory basis. Every Verify finding needs what is missing plus specific open question only never suggest an answer. If image area is too small or unclear flag it before proceeding.
+GUARDIAN BEHAVIOR: Read every ingredient name character by character. When spelling error found in one location scan every other instance. Before flagging symbol usage trace every symbol to its footnote. Consolidate duplicate findings. Every finding MUST include the exact panel location (e.g. "SFP Row 1, 1ml column", "PDP front panel bottom", "Right panel below SFP box") and the exact current text found on the label. Every finding needs what is wrong plus why it matters plus exact recommendation. Every Confirmed finding needs exact fix with current text shown and corrected text shown plus regulatory basis. Every Verify finding needs what is missing plus specific open question only never suggest an answer. If image area is too small or unclear flag it before proceeding. Audit date must be in US Eastern Time (ET).
 
 OUTPUT FORMAT - Respond ONLY with valid JSON no preamble no markdown fences:
 {
@@ -112,6 +112,9 @@ export default function GuardianDashboard() {
   const [uploading, setUploading]   = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [findingNotes, setFindingNotes] = useState({});
+  const [rulebookText, setRulebookText] = useState("");
+  const [rulebookEditMode, setRulebookEditMode] = useState(false);
   const [panelFilter, setPanelFilter] = useState("all");
   const [openSection, setOpenSection] = useState(null);
   const [checked, setChecked]       = useState({});
@@ -397,7 +400,28 @@ export default function GuardianDashboard() {
         {/* DETAIL PAGE */}
         {page === "detail" && detail?.result && (
           <div style={{ flex:1, overflowY:"auto", padding:32 }}>
-            <button onClick={() => { setPage("dashboard"); setDetail(null); }} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:22, padding:0 }}>← Back to Dashboard</button>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
+              <button onClick={() => { setPage("dashboard"); setDetail(null); }} style={{ background:"none", border:"none", color:"#4F46E5", fontSize:13, fontWeight:600, cursor:"pointer", padding:0 }}>← Back to Dashboard</button>
+              <button onClick={() => {
+                const findings = detail.result.findings || [];
+                const tasks = detail.result.non_label_tasks || [];
+                const allRows = [
+                  ["ID","Severity","Panel","Output Type","Confidence","Finding Title","What Is Wrong","Why It Matters","Recommendation","Status","Comment"],
+                  ...findings.map(f => {
+                    const noteKey = detail.id + "_" + f.id;
+                    const note = findingNotes[noteKey] || { status:"Open", comment:"" };
+                    return [f.id, f.severity, f.panel, f.output_type, f.confidence, f.title, f.what_is_wrong, f.why_it_matters, f.recommendation, note.status, note.comment];
+                  }),
+                  ...tasks.map(t => [t.id, t.severity, t.category, "VERIFY", "-", t.task, "-", "-", "-", "", ""])
+                ];
+                const csv = allRows.map(row => row.map(cell => `"${String(cell||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+                const blob = new Blob([csv], { type:"text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url;
+                a.download = (detail.result.summary.product_name || "audit") + "_guardian_audit.csv";
+                a.click(); URL.revokeObjectURL(url);
+              }} style={{ display:"flex", alignItems:"center", gap:7, background:"#16A34A", color:"#fff", border:"none", borderRadius:9, padding:"9px 18px", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Download Excel</button>
+            </div>
             <div style={{ display:"flex", gap:24, alignItems:"flex-start" }}>
               <div style={{ width:270, flexShrink:0 }}>
                 {detail.imageUrl && (
@@ -406,20 +430,44 @@ export default function GuardianDashboard() {
                   </div>
                 )}
                 <div style={{ background:"#fff", border:"1px solid #E2E8F0", borderRadius:14, padding:"16px 18px" }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:"#0F172A", marginBottom:12, lineHeight:1.4 }}>{detail.result.summary.product_name}</div>
-                  {(() => { const os = detail.result.summary.overall_status; const st = SEV[os] || SEV.NOTE; return <div style={{ marginBottom:14 }}><span style={{ fontSize:12, fontWeight:800, color:st.color, background:st.bg, border:`1px solid ${st.border}`, borderRadius:8, padding:"5px 12px" }}>{os}</span></div>; })()}
+                  <div style={{ fontSize:13, fontWeight:700, color:"#0F172A", marginBottom:10, lineHeight:1.4 }}>{detail.result.summary.product_name}</div>
+                  {(() => { const os = detail.result.summary.overall_status; const st = SEV[os] || SEV.NOTE; return <div style={{ marginBottom:12 }}><span style={{ fontSize:12, fontWeight:800, color:st.color, background:st.bg, border:`1px solid ${st.border}`, borderRadius:8, padding:"5px 12px" }}>{os}</span></div>; })()}
+                  <div style={{ fontSize:10, fontWeight:700, color:"#94A3B8", letterSpacing:"0.07em", marginBottom:6 }}>SEVERITY</div>
                   {[
                     { label:"Critical", value:detail.result.summary.critical_count, color:"#EF4444" },
                     { label:"Warning",  value:detail.result.summary.warning_count,  color:"#D97706" },
                     { label:"Note",     value:detail.result.summary.note_count,     color:"#2563EB" },
                     { label:"Total",    value:detail.result.summary.total_findings,  color:"#4F46E5" },
                   ].map(r => (
-                    <div key={r.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:"1px solid #F8FAFC" }}>
+                    <div key={r.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #F8FAFC" }}>
                       <span style={{ fontSize:12, color:"#64748B" }}>{r.label}</span>
-                      <span style={{ fontSize:16, fontWeight:800, color:r.color }}>{r.value}</span>
+                      <span style={{ fontSize:14, fontWeight:800, color:r.color }}>{r.value}</span>
                     </div>
                   ))}
-                  <div style={{ marginTop:12, fontSize:11, color:"#94A3B8" }}>Audited {detail.result.summary.audit_date}</div>
+                  <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid #F1F5F9" }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:"#94A3B8", letterSpacing:"0.07em", marginBottom:6 }}>PROGRESS</div>
+                    {[
+                      { label:"🔴 Open",         key:"Open",         color:"#EF4444" },
+                      { label:"🟣 Content Team", key:"Content Team", color:"#7C3AED" },
+                      { label:"🔵 Supplier",     key:"Supplier",     color:"#0284C7" },
+                      { label:"🟡 Internal",     key:"Internal",     color:"#D97706" },
+                      { label:"✅ Resolved",     key:"Resolved",     color:"#16A34A" },
+                      { label:"⚫ N/A",          key:"N/A",          color:"#94A3B8" },
+                    ].map(r => {
+                      const count = Object.values(findingNotes).filter(n => n.status === r.key).length +
+                        (detail.result.findings || []).filter(f => {
+                          const nk = detail.id + "_" + f.id;
+                          return !findingNotes[nk] && r.key === "Open";
+                        }).length;
+                      return (
+                        <div key={r.key} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"4px 0" }}>
+                          <span style={{ fontSize:11, color:"#64748B" }}>{r.label}</span>
+                          <span style={{ fontSize:13, fontWeight:800, color:r.color }}>{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ marginTop:10, fontSize:11, color:"#94A3B8" }}>Audited {detail.result.summary.audit_date}</div>
                 </div>
               </div>
 
@@ -441,19 +489,34 @@ export default function GuardianDashboard() {
                     const sev = SEV[f.severity] || SEV.NOTE;
                     const isOpen = expandedId === f.id;
                     const pc = PANEL_COLOR[f.panel] || "#64748B";
+                    const noteKey = `${detail.id}_${f.id}`;
+                    const note = findingNotes[noteKey] || { status: "Open", comment: "", updatedAt: "" };
+                    const STATUS_OPTIONS = ["Open", "Content Team", "Supplier", "Internal", "Resolved", "N/A"];
+                    const STATUS_COLORS = { "Open":"#EF4444", "Content Team":"#7C3AED", "Supplier":"#0284C7", "Internal":"#D97706", "Resolved":"#16A34A", "N/A":"#94A3B8" };
+                    const isClosed = note.status === "Resolved" || note.status === "N/A";
+                    const updateNote = (field, value) => {
+                      setFindingNotes(prev => ({ ...prev, [noteKey]: { ...(prev[noteKey] || { status:"Open", comment:"" }), [field]: value } }));
+                    };
                     return (
-                      <div key={f.id} onClick={() => setExpandedId(isOpen ? null : f.id)}
-                        style={{ background:"#fff", border:`1px solid ${isOpen?sev.border:"#E2E8F0"}`, borderLeft:`4px solid ${sev.color}`, borderRadius:11, padding:"13px 16px", cursor:"pointer" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                          <span style={{ fontSize:10, fontWeight:800, letterSpacing:"0.06em", color:sev.color, background:sev.bg, borderRadius:5, padding:"2px 8px" }}>{f.severity}</span>
-                          <span style={{ fontSize:10, fontWeight:700, color:pc, background:pc+"1A", borderRadius:5, padding:"2px 8px" }}>{f.panel}</span>
-                          <span style={{ fontSize:11, color:"#94A3B8" }}>{OUT_ICON[f.output_type]} {f.output_type}</span>
-                          <span style={{ fontSize:11, fontWeight:600, color:f.confidence==="Confirmed"?"#16A34A":"#D97706", marginLeft:"auto" }}>{f.confidence==="Confirmed"?"✓ Confirmed":"⚠ Verify"}</span>
-                          <span style={{ fontSize:11, color:"#CBD5E1" }}>{isOpen?"▴":"▾"}</span>
+                      <div key={f.id}
+                        style={{ background: isClosed ? "#F8FAFC" : "#fff", border:`1px solid ${isOpen?sev.border:"#E2E8F0"}`, borderLeft:`4px solid ${isClosed?"#CBD5E1":sev.color}`, borderRadius:11, padding:"13px 16px", opacity: isClosed ? 0.7 : 1 }}>
+                        <div onClick={() => setExpandedId(isOpen ? null : f.id)} style={{ cursor:"pointer" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                            <span style={{ fontSize:10, fontWeight:800, letterSpacing:"0.06em", color:sev.color, background:sev.bg, borderRadius:5, padding:"2px 8px" }}>{f.severity}</span>
+                            <span style={{ fontSize:10, fontWeight:700, color:pc, background:pc+"1A", borderRadius:5, padding:"2px 8px" }}>{f.panel}</span>
+                            <span style={{ fontSize:11, color:"#94A3B8" }}>{OUT_ICON[f.output_type]} {f.output_type}</span>
+                            <div onClick={e => e.stopPropagation()} style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6 }}>
+                              <select value={note.status} onChange={e => updateNote("status", e.target.value)}
+                                style={{ fontSize:11, fontWeight:700, color:"#fff", background:STATUS_COLORS[note.status]||"#64748B", border:"none", borderRadius:6, padding:"3px 10px", cursor:"pointer", outline:"none" }}>
+                                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+                            <span style={{ fontSize:11, color:"#CBD5E1" }}>{isOpen?"▴":"▾"}</span>
+                          </div>
+                          <div style={{ fontSize:14, fontWeight:700, color: isClosed?"#94A3B8":"#1E293B", marginTop:8, lineHeight:1.4, textDecoration: isClosed?"line-through":"none" }}>{f.title}</div>
                         </div>
-                        <div style={{ fontSize:14, fontWeight:700, color:"#1E293B", marginTop:8, lineHeight:1.4 }}>{f.title}</div>
                         {isOpen && (
-                          <div style={{ marginTop:14, display:"flex", flexDirection:"column", gap:10 }}>
+                          <div onClick={e => e.stopPropagation()} style={{ marginTop:14, display:"flex", flexDirection:"column", gap:10 }}>
                             <div style={{ background:"#F8FAFC", borderRadius:9, padding:"11px 14px" }}>
                               <div style={{ fontSize:10, fontWeight:700, color:"#94A3B8", letterSpacing:"0.07em", marginBottom:5 }}>WHAT IS WRONG</div>
                               <div style={{ fontSize:13, color:"#374151", lineHeight:1.6 }}>{f.what_is_wrong}</div>
@@ -465,6 +528,12 @@ export default function GuardianDashboard() {
                             <div style={{ background:sev.bg, border:`1px solid ${sev.border}`, borderRadius:9, padding:"11px 14px" }}>
                               <div style={{ fontSize:10, fontWeight:700, color:sev.color, letterSpacing:"0.07em", marginBottom:5, opacity:0.8 }}>RECOMMENDATION</div>
                               <div style={{ fontSize:13, color:"#111827", lineHeight:1.6, fontWeight:600 }}>{f.recommendation}</div>
+                            </div>
+                            <div style={{ background:"#F8FAFC", borderRadius:9, padding:"11px 14px" }}>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#94A3B8", letterSpacing:"0.07em", marginBottom:6 }}>COMMENT</div>
+                              <input type="text" placeholder="Add your comment here..." value={note.comment}
+                                onChange={e => updateNote("comment", e.target.value)}
+                                style={{ width:"100%", fontSize:13, color:"#374151", border:"1px solid #E2E8F0", borderRadius:7, padding:"8px 12px", outline:"none", background:"#fff", boxSizing:"border-box" }} />
                             </div>
                           </div>
                         )}
@@ -499,10 +568,35 @@ export default function GuardianDashboard() {
         {/* RULEBOOK PAGE */}
         {page === "rulebook" && (
           <div style={{ flex:1, overflowY:"auto", padding:32 }}>
-            <div style={{ marginBottom:28 }}>
-              <h1 style={{ fontSize:24, fontWeight:800, color:"#0F172A", margin:0, letterSpacing:"-0.03em" }}>Rulebook</h1>
-              <p style={{ fontSize:13, color:"#64748B", marginTop:5 }}>Guardian Logic Master Document · {RULEBOOK_VERSION} · Last checked {LAST_CHECKED}</p>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28 }}>
+              <div>
+                <h1 style={{ fontSize:24, fontWeight:800, color:"#0F172A", margin:0, letterSpacing:"-0.03em" }}>Rulebook</h1>
+                <p style={{ fontSize:13, color:"#64748B", marginTop:5 }}>Guardian Logic Master Document · {RULEBOOK_VERSION} · Last checked {LAST_CHECKED}</p>
+              </div>
+              <button onClick={() => setRulebookEditMode(!rulebookEditMode)}
+                style={{ background: rulebookEditMode ? "#EF4444" : "linear-gradient(135deg,#4F46E5,#7C3AED)", color:"#fff", border:"none", borderRadius:9, padding:"9px 18px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                {rulebookEditMode ? "✕ Cancel" : "⬆ Update Rulebook"}
+              </button>
             </div>
+            {rulebookEditMode && (
+              <div style={{ background:"#fff", border:"1px solid #E2E8F0", borderRadius:14, padding:20, marginBottom:24 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:"#0F172A", marginBottom:8 }}>Paste new rulebook text below</div>
+                <div style={{ fontSize:12, color:"#94A3B8", marginBottom:12 }}>Ask Claude for rulebook v27, copy the full text, paste it here, then click Save.</div>
+                <textarea value={rulebookText} onChange={e => setRulebookText(e.target.value)}
+                  placeholder="Paste rulebook text here..."
+                  style={{ width:"100%", height:200, fontSize:12, color:"#374151", border:"1px solid #E2E8F0", borderRadius:8, padding:"10px 12px", outline:"none", resize:"vertical", boxSizing:"border-box", fontFamily:"monospace" }} />
+                <div style={{ display:"flex", gap:10, marginTop:12 }}>
+                  <button onClick={() => {
+                    if (rulebookText.trim()) {
+                      alert("Rulebook updated! The new rules will be used in all future scans. Note: To permanently save, update GUARDIAN_SYSTEM_PROMPT in App.jsx with this text.");
+                      setRulebookEditMode(false);
+                    }
+                  }} style={{ background:"#16A34A", color:"#fff", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>✓ Save Rulebook</button>
+                  <button onClick={() => { setRulebookText(""); setRulebookEditMode(false); }}
+                    style={{ background:"#F1F5F9", color:"#64748B", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancel</button>
+                </div>
+              </div>
+            )}
             <div style={{ maxWidth:700, display:"flex", flexDirection:"column", gap:8 }}>
               {RULEBOOK_SECTIONS.map(sec => (
                 <div key={sec.id} style={{ background:"#fff", border:"1px solid #E2E8F0", borderRadius:12, overflow:"hidden" }}>
